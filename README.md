@@ -9,7 +9,7 @@ The Android app is optional. Both the app and CLI can connect to the same local 
 Run this single command inside Termux:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Adams-404/clearport-cli/main/install.sh | bash
+pkg install -y curl && curl -fsSL https://raw.githubusercontent.com/Adams-404/clearport-cli/main/install.sh | bash
 ```
 
 The installer installs the required Termux packages and places the CLI in `$PREFIX/bin`. It does not download model weights.
