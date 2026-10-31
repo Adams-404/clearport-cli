@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -Eeuo pipefail
 
-VERSION="0.2.0"
+VERSION="0.3.0"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/clearport"
 CONFIG_FILE="$CONFIG_DIR/server.conf"
 SERVER_CMD="clearport-server"
@@ -23,6 +23,7 @@ Usage:
   clearport logs           Follow server logs
   clearport stop           Stop the managed server
   clearport restart        Restart the server
+  clearport update         Update the CLI scripts to latest from GitHub
   clearport config         Edit server configuration
   clearport version        Show CLI version
 EOF
@@ -331,6 +332,46 @@ stop_server() {
   if command -v termux-wake-unlock >/dev/null 2>&1; then termux-wake-unlock >/dev/null 2>&1 || true; fi
 }
 
+update_cli() {
+  local repo="Adams-404/clearport-cli"
+  local branch="main"
+  local raw="https://raw.githubusercontent.com/$repo/$branch"
+  local bin_dir="${PREFIX:-/data/data/com.termux/files/usr}/bin"
+  local tmp
+  tmp="$(mktemp -d)"
+  # shellcheck disable=SC2064
+  trap "rm -rf '$tmp'" EXIT
+
+  note "Checking for updates from $repo ($branch)..."
+  need curl curl
+
+  if ! curl -fsSL "$raw/scripts/clearport" -o "$tmp/clearport"; then
+    die "Could not download latest clearport script from GitHub."
+  fi
+  if ! curl -fsSL "$raw/scripts/clearport-server" -o "$tmp/clearport-server"; then
+    die "Could not download latest clearport-server script from GitHub."
+  fi
+
+  chmod 755 "$tmp/clearport" "$tmp/clearport-server"
+
+  local new_ver
+  new_ver="$(grep '^VERSION=' "$tmp/clearport" | head -n 1 | cut -d'"' -f2 || echo "latest")"
+
+  if [ -w "$bin_dir" ]; then
+    install -m 755 "$tmp/clearport" "$bin_dir/clearport"
+    install -m 755 "$tmp/clearport-server" "$bin_dir/clearport-server"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo install -m 755 "$tmp/clearport" "$bin_dir/clearport"
+    sudo install -m 755 "$tmp/clearport-server" "$bin_dir/clearport-server"
+  else
+    cp "$tmp/clearport" "$bin_dir/clearport"
+    cp "$tmp/clearport-server" "$bin_dir/clearport-server"
+    chmod 755 "$bin_dir/clearport" "$bin_dir/clearport-server"
+  fi
+
+  note "Successfully updated Clearport CLI to $new_ver!"
+}
+
 case "${1:-help}" in
   start) start_server ;;
   chat) chat ;;
@@ -343,6 +384,7 @@ case "${1:-help}" in
   logs) "$SERVER_CMD" logs ;;
   stop) stop_server ;;
   restart) stop_server; start_server ;;
+  update) update_cli ;;
   config)
     mkdir -p "$CONFIG_DIR"; touch "$CONFIG_FILE"; chmod 600 "$CONFIG_FILE"
     "${EDITOR:-nano}" "$CONFIG_FILE"

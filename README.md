@@ -80,6 +80,7 @@ depending on how your day went.
 | `clearport logs` | Follow the server log |
 | `clearport stop` | Stop the managed server |
 | `clearport restart` | Restart with the current configuration |
+| `clearport update` | Update the CLI scripts to latest from GitHub |
 | `clearport config` | Edit server configuration |
 | `clearport version` | Show CLI version |
 

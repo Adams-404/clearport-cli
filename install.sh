@@ -36,5 +36,6 @@ echo "  clearport use ~/models/your-model.gguf"
 echo "  clearport start"
 echo "  clearport chat"
 echo "  clearport haunt"
+echo "  clearport update"
 echo
 echo "No model weights were downloaded."
