@@ -16,6 +16,7 @@ Usage:
   clearport models         Show models loaded by the server
   clearport local-models   List local GGUF files
   clearport use <file>     Select a GGUF model
+  clearport pull <model>   Download a verified Gemma GGUF into ~/models
   clearport status         Check the server and API
   clearport logs           Follow server logs
   clearport stop           Stop the managed server
@@ -154,6 +155,78 @@ chat() {
   printf '\n'
 }
 
+is_gguf() {
+  [ -f "$1" ] || return 1
+  [ "$(head -c 4 "$1" 2>/dev/null)" = "GGUF" ]
+}
+
+pull_model() {
+  [ "$#" -eq 1 ] || die "Usage: clearport pull <gemma|gemma-tiny>"
+  local key="$1" name url expected sha size
+  case "$key" in
+    gemma|gemma-1b|1b)
+      name="gemma-3-1b-it-Q4_K_M.gguf"
+      url="https://huggingface.co/ggml-org/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_K_M.gguf"
+      expected=806058240
+      sha="8ccc5cd1f1b3602548715ae25a66ed73fd5dc68a210412eea643eb20eb75a135"
+      size="806 MB"
+      ;;
+    gemma-tiny|tiny|270m)
+      name="gemma-3-270m-Q8_0.gguf"
+      url="https://huggingface.co/ggml-org/gemma-3-270m-GGUF/resolve/main/gemma-3-270m-Q8_0.gguf"
+      expected=291543744
+      sha="e00cf79514204dfe2f4d6943f277ffea7fd8a4c8e955b4b7a869cfc157694881"
+      size="292 MB"
+      ;;
+    *)
+      die "Unknown model: $key. Available: gemma (Gemma 3 1B, 806 MB), gemma-tiny (Gemma 3 270M, 292 MB)."
+      ;;
+  esac
+
+  need curl curl
+  mkdir -p "$HOME/models"
+  local dest="$HOME/models/$name" have=0
+  if [ -f "$dest" ]; then have=$(wc -c < "$dest" | tr -d '[:space:]'); fi
+
+  if [ "$have" -eq "$expected" ]; then
+    note "Already downloaded: $dest"
+  else
+    if [ "$have" -gt 0 ] && [ "$have" -lt "$expected" ]; then
+      note "Resuming at $((have / 1000000)) MB of $size"
+    else
+      rm -f "$dest"
+    fi
+    note "Downloading $name ($size) to ~/models"
+    note "Resumable: if it stops, re-run 'clearport pull $key'."
+    # -C - resumes a partial file, which matters on mobile data.
+    if ! curl -fL --retry 5 --retry-delay 3 -C - --progress-bar -o "$dest" "$url"; then
+      die "Download failed. The partial file is kept; re-run 'clearport pull $key' to resume."
+    fi
+    have=$(wc -c < "$dest" | tr -d '[:space:]')
+    if [ "$have" -ne "$expected" ]; then
+      die "Size mismatch: expected $expected bytes, got $have. Re-run 'clearport pull $key' to resume."
+    fi
+  fi
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    note "Verifying checksum..."
+    if [ "$(sha256sum "$dest" | cut -d' ' -f1)" != "$sha" ]; then
+      rm -f "$dest"
+      die "Checksum mismatch; the corrupted download was removed. Try again."
+    fi
+    note "Checksum verified."
+  else
+    note "sha256sum unavailable; size verified only."
+  fi
+
+  note "Model ready: $dest"
+  if [ ! -f "$CONFIG_FILE" ] || ! grep -q '^MODEL_PATH=' "$CONFIG_FILE"; then
+    use_model "$dest"
+  else
+    note "Run 'clearport use $dest' to switch to it."
+  fi
+}
+
 stop_server() {
   load_config
   "$SERVER_CMD" stop || true
@@ -166,6 +239,7 @@ case "${1:-help}" in
   models) show_models ;;
   local-models) show_local_models ;;
   use) shift; use_model "$@" ;;
+  pull) shift; pull_model "$@" ;;
   status) show_status ;;
   logs) "$SERVER_CMD" logs ;;
   stop) stop_server ;;

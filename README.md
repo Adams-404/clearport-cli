@@ -27,6 +27,23 @@ clearport chat
 
 If there is exactly one GGUF file in `~/models`, the first `clearport start` selects it automatically. If there are multiple files, select one with `clearport use`.
 
+## Get a model (Gemma)
+
+No weights ship with Clearport. If you do not have a GGUF yet, the CLI can fetch a
+verified Gemma model for you:
+
+```bash
+clearport pull gemma        # Gemma 3 1B, Q4_K_M — 806 MB, the balanced default
+clearport pull gemma-tiny   # Gemma 3 270M, Q8_0 — 292 MB, fastest and smallest
+```
+
+Downloads land in `~/models`, resume if the connection drops, and are checked against
+the published byte size and SHA-256 before use. If no model is configured yet, the
+pulled model is selected automatically.
+
+Both are open-weight models under the Gemma Terms of Use. Rough RAM: about 1.2 GB for
+1B and 500 MB for 270M. On a phone with 4 GB or less, start with `gemma-tiny`.
+
 ## Commands
 
 | Command | Description |
@@ -37,6 +54,7 @@ If there is exactly one GGUF file in `~/models`, the first `clearport start` sel
 | `clearport models` | List models exposed by the API |
 | `clearport local-models` | List local GGUF files |
 | `clearport use <file>` | Choose the GGUF model to load |
+| `clearport pull <model>` | Download a verified Gemma GGUF into `~/models` |
 | `clearport logs` | Follow the server log |
 | `clearport stop` | Stop the managed server |
 | `clearport restart` | Restart with the current configuration |
