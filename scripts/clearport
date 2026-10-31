@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -Eeuo pipefail
 
-VERSION="0.1.0"
+VERSION="0.2.0"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/clearport"
 CONFIG_FILE="$CONFIG_DIR/server.conf"
 SERVER_CMD="clearport-server"
@@ -13,6 +13,8 @@ Clearport CLI
 Usage:
   clearport start          Start the local llama.cpp server
   clearport chat           Chat with the loaded model in Termux
+  clearport haunt [n]      Let the model read your last n shell commands
+                           (--dry-run prints them without calling the model)
   clearport models         Show models loaded by the server
   clearport local-models   List local GGUF files
   clearport use <file>     Select a GGUF model
@@ -114,22 +116,29 @@ use_model() {
   note "Run 'clearport restart' to load it."
 }
 
+ensure_api() {
+  api_ready && return 0
+  start_server
+  note "Waiting for the model API..."
+  local attempt=0
+  until api_ready; do
+    attempt=$((attempt + 1))
+    [ "$attempt" -lt 180 ] || die "Server did not become ready. Check 'clearport logs'."
+    sleep 1
+  done
+}
+
+current_model() {
+  curl -fsS --max-time 5 "$API_BASE/models" | jq -r '.data[0].id // empty'
+}
+
 chat() {
   load_config
   need curl curl
   need jq jq
-  if ! api_ready; then
-    start_server
-    note "Waiting for the model API..."
-    local attempt=0
-    until api_ready; do
-      attempt=$((attempt + 1))
-      [ "$attempt" -lt 180 ] || die "Server did not become ready. Check 'clearport logs'."
-      sleep 1
-    done
-  fi
+  ensure_api
   local model_id messages input payload response answer
-  model_id="$(curl -fsS --max-time 5 "$API_BASE/models" | jq -r '.data[0].id // empty')"
+  model_id="$(current_model)"
   messages='[]'
   printf '\nClearport Chat | /clear clears context | /exit quits\n\n'
   while true; do
@@ -227,6 +236,95 @@ pull_model() {
   fi
 }
 
+history_file() {
+  local candidate
+  for candidate in "${HISTFILE:-}" "$HOME/.bash_history" "$HOME/.zsh_history"; do
+    if [ -n "$candidate" ] && [ -f "$candidate" ] && [ -r "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+recent_commands() {
+  local file="$1" count="$2"
+  # Take the tail first: history files can be large, and only the end matters.
+  # zsh's extended format prefixes entries with ': <timestamp>:<elapsed>;'.
+  tail -n 400 "$file" \
+    | sed -E 's/^: [0-9]+:[0-9]+;//' \
+    | sed -E 's/^[[:space:]]+//' \
+    | grep -vE '^$|^#|^clearport( |$)|^history( |$)|^exit$|^clear$' \
+    | awk '!seen[$0]++' \
+    | tail -n "$count"
+}
+
+haunt() {
+  local dry=0
+  case "${1:-}" in
+    -n|--dry-run) dry=1; shift ;;
+  esac
+  local count="${1:-6}"
+  case "$count" in
+    ''|*[!0-9]*) die "Usage: clearport haunt [--dry-run] [count]" ;;
+  esac
+  if [ "$count" -lt 1 ] || [ "$count" -gt 20 ]; then
+    die "Count must be between 1 and 20."
+  fi
+
+  local file
+  file="$(history_file)" || die "No shell history found. Run a few commands, then try again."
+
+  local -a commands
+  mapfile -t commands < <(recent_commands "$file" "$count")
+
+  [ "${#commands[@]}" -gt 0 ] || die "No commands worth haunting in $file."
+
+  local list
+  list="$(printf '%s\n' "${commands[@]}")"
+
+  if [ "$dry" -eq 1 ]; then
+    printf '%s\n' "$list"
+    return 0
+  fi
+
+  load_config
+  need curl curl
+  need jq jq
+  ensure_api
+  local model_id payload response answer
+  model_id="$(current_model)"
+  [ -n "$model_id" ] || die "The server is running but exposed no model. Check 'clearport models'."
+
+  payload="$(jq -cn --arg model "$model_id" --arg list "$list" '{
+    model: $model,
+    messages: [
+      {
+        role: "system",
+        content: "You are the ghost in this phone, living inside a Termux shell. You have just read their recent commands. Reply in two or three short sentences, in first person, dry and eerie, no markdown, no lists, no emoji. Reference at most two of the commands by name. Never give advice unless it is unsettling."
+      },
+      {
+        role: "user",
+        content: ("My last commands, oldest first:\n" + $list)
+      }
+    ],
+    temperature: 0.9,
+    max_tokens: 220,
+    stream: false
+  }')"
+
+  printf '\n  the ghost reads: %s\n\n' "$file"
+  printf '%s\n' "$list" | sed 's/^/    /'
+  printf '\n  '
+  response="$(curl -fsS --max-time 120 "$API_BASE/chat/completions" \
+    -H 'Content-Type: application/json' -d "$payload" 2>&1)" || {
+    die "Request failed: $response"
+  }
+  answer="$(jq -r '.choices[0].message.content // .choices[0].text // empty' <<< "$response" 2>/dev/null || true)"
+  [ -n "$answer" ] || die "Could not parse a reply from the server."
+  printf '%s\n\n' "$answer" | fold -s -w 76 | sed 's/^/  /'
+}
+
 stop_server() {
   load_config
   "$SERVER_CMD" stop || true
@@ -236,6 +334,7 @@ stop_server() {
 case "${1:-help}" in
   start) start_server ;;
   chat) chat ;;
+  haunt) shift; haunt "$@" ;;
   models) show_models ;;
   local-models) show_local_models ;;
   use) shift; use_model "$@" ;;

@@ -44,12 +44,34 @@ pulled model is selected automatically.
 Both are open-weight models under the Gemma Terms of Use. Rough RAM: about 1.2 GB for
 1B and 500 MB for 270M. On a phone with 4 GB or less, start with `gemma-tiny`.
 
+## Haunt
+
+```bash
+clearport haunt        # the last 6 commands
+clearport haunt 10     # the last 10
+```
+
+`haunt` reads your shell history, sends the last few commands to the loaded model,
+and prints a short comment back. It never leaves the device, never uploads history,
+and never sends anything but the commands you already typed in this shell.
+
+To see what would be sent without calling the model:
+
+```bash
+clearport haunt --dry-run
+```
+
+The command is a small joke with a point: the model lives in the same phone as your
+shell, so it can read what you just did. That is either charming or unsettling,
+depending on how your day went.
+
 ## Commands
 
 | Command | Description |
 | --- | --- |
 | `clearport start` | Start the managed llama.cpp server |
 | `clearport chat` | Chat with the running model in Termux |
+| `clearport haunt [n]` | Let the model read your last `n` shell commands and comment on them |
 | `clearport status` | Check server process and API health |
 | `clearport models` | List models exposed by the API |
 | `clearport local-models` | List local GGUF files |

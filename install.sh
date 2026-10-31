@@ -27,10 +27,14 @@ install -m 755 "$TMP/clearport-server" "$BIN_DIR/clearport-server"
 
 echo
 echo "Clearport CLI installed."
-echo "Put a .gguf model in ~/models, then run:"
+echo "No model yet? Fetch a verified Gemma build (292 MB or 806 MB):"
+echo "  clearport pull gemma-tiny"
+echo
+echo "Or put your own .gguf in ~/models, then run:"
 echo "  clearport local-models"
 echo "  clearport use ~/models/your-model.gguf"
 echo "  clearport start"
 echo "  clearport chat"
+echo "  clearport haunt"
 echo
 echo "No model weights were downloaded."
